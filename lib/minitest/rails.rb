@@ -36,6 +36,29 @@ class ActiveSupport::TestCase
   end
 end
 
+if ENV["RAILS_CONTROLLER_TESTING"]
+  require "action_controller/test_case"
+  class ActionController::TestCase
+    # Use AC::TestCase for the base class when describing a controller
+    register_spec_type(self) do |desc|
+      Class === desc && desc < ActionController::Metal
+    end
+    register_spec_type(/Controller( ?Test)?\z/i, self)
+    register_spec_type(self) do |desc, *addl|
+      addl.include? :controller
+    end
+
+    # Resolve the controller from the test name when using the spec DSL
+    def self.determine_default_controller_class(name)
+      controller = determine_constant_from_test_name(name) do |constant|
+        Class === constant && constant < ActionController::Metal
+      end
+      raise NameError.new("Unable to resolve controller for #{name}") if controller.nil?
+      controller
+    end
+  end
+end
+
 require "action_view/test_case"
 class ActionView::TestCase
   # Use AV::TestCase for the base class for helpers and views
@@ -92,15 +115,23 @@ end
 
 require "action_dispatch/testing/integration"
 class ActionDispatch::IntegrationTest
-  # Use AD::IntegrationTest for the base class when describing a controller
-  register_spec_type(self) do |desc|
-    Class === desc && desc < ActionController::Metal
-  end
-  # Register by name, either Integration or Controller
-  register_spec_type(/(Integration|Controller)( ?Test)?\z/i, self)
-  register_spec_type(self) do |desc, *addl|
-    addl.include?(:integration) ||
-      addl.include?(:controller)
+  if ENV["RAILS_CONTROLLER_TESTING"]
+    # Register by Integration name only
+    register_spec_type(/Integration( ?Test)?\z/i, self)
+    register_spec_type(self) do |desc, *addl|
+      addl.include? :integration
+    end
+  else
+    # Use AD::IntegrationTest for the base class when describing a controller
+    register_spec_type(self) do |desc|
+      Class === desc && desc < ActionController::Metal
+    end
+    # Register by name, either Integration or Controller
+    register_spec_type(/(Integration|Controller)( ?Test)?\z/i, self)
+    register_spec_type(self) do |desc, *addl|
+      addl.include?(:integration) ||
+        addl.include?(:controller)
+    end
   end
 end
 
